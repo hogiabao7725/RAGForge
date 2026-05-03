@@ -3,6 +3,8 @@ import shutil
 import json
 import sys
 import time
+
+import requests
 import gradio as gr
 from dataclasses import dataclass
 from typing import ClassVar
@@ -10,6 +12,7 @@ from llama_index.core.chat_engine.types import StreamingAgentChatResponse
 from .theme import JS_LIGHT_THEME, CSS
 from ..pipeline import LocalRAGPipeline
 from ..logger import Logger
+from ..setting import RAGSettings
 
 
 @dataclass
@@ -96,6 +99,21 @@ class LocalChatbotUI:
         ]
         self._variant = "panel"
         self._llm_response = LLMResponse()
+
+    def _ollama_model_choices(self) -> list[str]:
+        """Populate dropdown from `ollama list` (same source as CLI). Fallback if API unreachable."""
+        setting = RAGSettings()
+        fallback = ["qwen2.5:7b", "qwen2.5:3b", "llama3.1:8b-instruct-q8_0"]
+        try:
+            r = requests.get(
+                f"http://{self._host}:{setting.ollama.port}/api/tags", timeout=3
+            )
+            r.raise_for_status()
+            models = r.json().get("models") or []
+            names = sorted({m["name"] for m in models if m.get("name")})
+            return names if names else fallback
+        except Exception:
+            return fallback
 
     def _get_respone(
         self,
@@ -286,9 +304,7 @@ class LocalChatbotUI:
                             )
                             model = gr.Dropdown(
                                 label="Choose Model:",
-                                choices=[
-                                    "llama3.1:8b-instruct-q8_0",
-                                ],
+                                choices=self._ollama_model_choices(),
                                 value=None,
                                 interactive=True,
                                 allow_custom_value=True,
